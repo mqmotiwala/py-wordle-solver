@@ -1,15 +1,11 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import random
+import time
 
 class mufsolver_server(BaseHTTPRequestHandler):
-    words_path = "mufs-solver/words_list.txt"
-    iterable_words_list = []
-    with open(words_path, "r") as f:
-        for word in f:
-            iterable_words_list.append(word.strip())
-
-    guess = {}
+    def log_message(self, format, *args):
+        pass
 
     def do_GET(self):
         if self.path == "/ping":
@@ -54,31 +50,40 @@ class mufsolver_server(BaseHTTPRequestHandler):
                         green_letters[letter]=i
                 
                 # check for grey
-                words_list = iterable_words_list.copy()   
+                iterable_words_list = read_list_from_file()
+                words_list = iterable_words_list.copy()
+                print("starting round, words_list length is: ", str(len(words_list)))
                 for word in iterable_words_list:
                     for letter in word:
                         if letter in grey_letters:
                             words_list.remove(word)
                             # print(word, letter, "is grey")
                             break
-                    
+                
+                write_list_to_file(words_list)
+
+                print("purged greys, words list size is now: ", str(len(words_list)))
+
                 # check for green
-                iterable_words_list = words_list.copy()
+                iterable_words_list = read_list_from_file()
+                words_list = iterable_words_list.copy()
                 for word in iterable_words_list:
-                    for i, letter in enumerate(word):
-                        if letter in green_letters and green_letters[letter] != i:
+                    for letter in green_letters:
+                        if letter not in word or word[green_letters[letter]] != letter:
                             words_list.remove(word)
                             # print(word, letter, "is not in positition", str(green_letters[letter]))
                             break
                 
+                write_list_to_file(words_list)
+                
                 # pick a guess based on latest words_list
-                guess['guess'] = random.choice(words_list)
-                print("words list is now: ", str(len(words_list)))
+                print("forced greens, words list size is now: ", str(len(words_list)))
+                guess = {'guess':random.choice(words_list)}
 
             except KeyError:
                 # start of game, no results history
                 # print("keyerror")
-                guess['guess'] = 'audio'
+                guess = {'guess':'audio'}
 
             # send guess
             guess = json.dumps(guess).encode("utf-8")
@@ -88,6 +93,30 @@ class mufsolver_server(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(guess)
 
+def write_list_to_file(list):
+    with open('iwl.txt', 'w') as f:
+        for word in list:
+            f.write(word + '\n')
+    
+    time.sleep(10)
+
+def read_list_from_file():
+    list = []
+    with open('iwl.txt', 'r') as f:
+        for word in f:
+            list.append(word.strip())
+    
+    return list
+
+words_path = "mufs-solver/words_list.txt"
+iterable_words_list = []
+with open(words_path, "r") as f:
+    for word in f:
+        iterable_words_list.append(word.strip())
+
+write_list_to_file(iterable_words_list)
+
 PORT = 8080
 server = HTTPServer(("", PORT), mufsolver_server)
+server.quiet = True
 server.serve_forever()
