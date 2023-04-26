@@ -1,7 +1,6 @@
 from http.server import HTTPServer, BaseHTTPRequestHandler
 import json
 import random
-import time
 
 class mufsolver_server(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
@@ -11,7 +10,7 @@ class mufsolver_server(BaseHTTPRequestHandler):
         if self.path == "/ping":
             mufsolver = {
                 "name": "mufsolver",
-                "description": "late to the party",
+                "description": "ill amaze ya, in a good way... and bad",
                 "concurrent_connection_limit": 10,
                 "colour": "#7e0391"}
 
@@ -28,62 +27,77 @@ class mufsolver_server(BaseHTTPRequestHandler):
             content_length = int(self.headers['Content-Length'])
             game_state = self.rfile.read(content_length).decode('utf-8')
             game_state = json.loads(game_state)
-            # print(game_state)
 
+            # create two lists
+            ## 
+            iterable_list = read_list(filtered_words)
+            words_list = iterable_list.copy()
+            
             # prepare guess
             try: 
-                results = game_state['guess_results']
-                last_guess = results[-1]['guess'] 
-                last_result = results[-1]['result']
+                guess_results = game_state['guess_results']
+                last_guess = guess_results[-1]['guess'] 
+                last_result = guess_results[-1]['result']
                 
-                print(last_guess, last_result)
-                grey_letters = {}
+                print("\nguess:", last_guess, "result:", last_result)
+                # grey letters don't require position information so treat it as a set
+                grey_letters = set()
                 yellow_letters = {}
                 green_letters = {}
                 for i, letter in enumerate(last_guess):
                     if last_result[i] == 0:
-                        # grey letters don't require position information
-                        grey_letters[letter]=True
+                        grey_letters.add(letter)
                     elif last_result[i] == 1:
                         yellow_letters[letter]=i
                     else:
                         green_letters[letter]=i
                 
                 # check for grey
-                iterable_words_list = read_list_from_file()
-                words_list = iterable_words_list.copy()
-                print("starting round, words_list length is: ", str(len(words_list)))
-                for word in iterable_words_list:
-                    for letter in word:
-                        if letter in grey_letters:
-                            words_list.remove(word)
-                            # print(word, letter, "is grey")
-                            break
-                
-                write_list_to_file(words_list)
+                if len(grey_letters):
+                    for word in iterable_list:
+                        for letter in word:
+                            # need to add extra conditionals for yellow and green letters for words with duplicate letters
+                            if letter in grey_letters and letter not in yellow_letters and letter not in green_letters:
+                                words_list.remove(word)
+                                # print(word, letter, "is grey")
+                                break
+                    update_list(words_list, filtered_words)
+                    print("Grey check complete. Remaining words:", str(len(words_list)))
 
-                print("purged greys, words list size is now: ", str(len(words_list)))
+                # check for yellow
+                if len(yellow_letters):
+                    iterable_list = read_list(filtered_words)
+                    words_list = iterable_list.copy()
+                    for word in iterable_list:
+                        for letter in yellow_letters:
+                            # if yellow letter not in word
+                            # or, if word has yellow letter in yellow spot
+                            if letter not in word or word[yellow_letters[letter]] == letter:
+                                words_list.remove(word)
+                                # print(word, letter, "doesn't exist in word or is in pos", str(yellow_letters[letter]))
+                                break
+                    update_list(words_list, filtered_words)
+                    print("Yellow check complete. Remaining words:", str(len(words_list)))
 
                 # check for green
-                iterable_words_list = read_list_from_file()
-                words_list = iterable_words_list.copy()
-                for word in iterable_words_list:
-                    for letter in green_letters:
-                        if letter not in word or word[green_letters[letter]] != letter:
-                            words_list.remove(word)
-                            # print(word, letter, "is not in positition", str(green_letters[letter]))
-                            break
-                
-                write_list_to_file(words_list)
-                
+                if len(green_letters):
+                    iterable_list = read_list(filtered_words)
+                    words_list = iterable_list.copy()
+                    for word in iterable_list:
+                        for letter in green_letters:
+                            if letter not in word or word[green_letters[letter]] != letter:
+                                words_list.remove(word)
+                                # print(word, letter, "is not in positition", str(green_letters[letter]))
+                                break
+                    update_list(words_list, filtered_words)
+                    print("Green check complete. Remaining words:", str(len(words_list)))
+
                 # pick a guess based on latest words_list
-                print("forced greens, words list size is now: ", str(len(words_list)))
                 guess = {'guess':random.choice(words_list)}
 
             except KeyError:
                 # start of game, no results history
-                # print("keyerror")
-                guess = {'guess':'audio'}
+                guess = {'guess':random.choice(words_list)}
 
             # send guess
             guess = json.dumps(guess).encode("utf-8")
@@ -92,29 +106,46 @@ class mufsolver_server(BaseHTTPRequestHandler):
             self.send_header("Content-length", len(guess))
             self.end_headers()
             self.wfile.write(guess)
+        
+        if self.path == "/results":
+            content_length = int(self.headers['Content-Length'])
+            game_results = self.rfile.read(content_length).decode('utf-8')
+            game_results = json.loads(game_results)
 
-def write_list_to_file(list):
-    with open('iwl.txt', 'w') as f:
-        for word in list:
-            f.write(word + '\n')
-    
-    time.sleep(10)
+            game_won = game_results['results']['players'][0]['games_played'][-1]['correct']
+            answer = game_results['results']['games'][0]['answer']
+            num_turns = len(game_results['results']['players'][0]['games_played'][-1])
 
-def read_list_from_file():
+            if game_won:
+                print(f"You correctly guessed {answer} in {num_turns} turns!")
+            else:
+                print(f"You lost after {num_turns} turns. The answer was {answer}")
+            
+            # # update filtered list to full list for next game 
+            # # # and reset variables 
+            # update_list(read_list(all_words), filtered_words)
+            # green_letters.clear()
+            # yellow_letters.clear()
+            # green_letters.clear()
+            
+def read_list(file):
     list = []
-    with open('iwl.txt', 'r') as f:
+    with open(file, 'r') as f:
         for word in f:
             list.append(word.strip())
     
     return list
 
-words_path = "mufs-solver/words_list.txt"
-iterable_words_list = []
-with open(words_path, "r") as f:
-    for word in f:
-        iterable_words_list.append(word.strip())
+def update_list(list, file):
+    with open(file, 'w') as f:
+        for word in list:
+            f.write(word + '\n')
 
-write_list_to_file(iterable_words_list)
+all_words = "words_list.txt"
+filtered_words = 'dynamic_list.txt'
+
+# initiate filtered list as full list prior to game start
+update_list(read_list(all_words), filtered_words)
 
 PORT = 8080
 server = HTTPServer(("", PORT), mufsolver_server)
