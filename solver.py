@@ -22,6 +22,11 @@ class mufsolver_server(BaseHTTPRequestHandler):
             self.wfile.write(mufsolver)
     
     def do_POST(self):
+        # grey letters don't require position information so treat it as a set
+        grey_letters = set()
+        yellow_letters = {}
+        green_letters = {}
+        
         if self.path == "/guess":
             # read game state
             content_length = int(self.headers['Content-Length'])
@@ -40,10 +45,6 @@ class mufsolver_server(BaseHTTPRequestHandler):
                 last_result = guess_results[-1]['result']
                 
                 print("\nguess:", last_guess, "result:", last_result)
-                # grey letters don't require position information so treat it as a set
-                grey_letters = set()
-                yellow_letters = {}
-                green_letters = {}
                 for i, letter in enumerate(last_guess):
                     if last_result[i] == 0:
                         grey_letters.add(letter)
@@ -114,19 +115,19 @@ class mufsolver_server(BaseHTTPRequestHandler):
 
             game_won = game_results['results']['players'][0]['games_played'][-1]['correct']
             answer = game_results['results']['games'][0]['answer']
-            num_turns = len(game_results['results']['players'][0]['games_played'][-1])
+            num_turns = len(game_results['results']['players'][0]['games_played'][-1]['guess_results'])
 
             if game_won:
-                print(f"You correctly guessed {answer} in {num_turns} turns!")
+                print(f"\nYou correctly guessed {answer} in {num_turns} turns!")
             else:
                 print(f"You lost after {num_turns} turns. The answer was {answer}")
             
-            # # update filtered list to full list for next game 
-            # # # and reset variables 
-            # update_list(read_list(all_words), filtered_words)
-            # green_letters.clear()
-            # yellow_letters.clear()
-            # green_letters.clear()
+            # update filtered list to full list for next game 
+            # # and reset variables 
+            update_list(read_list(all_words), filtered_words)
+            green_letters.clear()
+            yellow_letters.clear()
+            green_letters.clear()
             
 def read_list(file):
     list = []
