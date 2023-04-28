@@ -15,7 +15,7 @@ if not os.path.exists("logs"): os.makedirs("logs")
 # file handler
 file_handler = logging.FileHandler(log_file)
 file_handler.setFormatter(preferred_format)
-file_handler.setLevel(logging.INFO) # level=DEBUG will also print the 
+file_handler.setLevel(logging.INFO) # level=DEBUG will also log details on color checks
 
 # stream handler
 stream_handler = logging.StreamHandler()
