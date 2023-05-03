@@ -36,7 +36,7 @@ class mufsolver_server(BaseHTTPRequestHandler):
         if self.path == "/ping":
             mufsolver = {
                 "name": "mufsolver",
-                "description": "ill amaze ya, in a good way... and bad",
+                "description": "get wreckd m8",
                 "concurrent_connection_limit": 10,
                 "colour": "#7e0391"}
 
