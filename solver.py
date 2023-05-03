@@ -47,18 +47,29 @@ class mufsolver_server(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(mufsolver)
     
-    def do_POST(self):
-        # grey letters don't require position information so treat it as a set
-        global words_dict
-        grey_letters = set()
-        yellow_letters = {}
-        green_letters = {}
-        
+    def do_POST(self):        
         if self.path == "/guess":
             # read game state
             content_length = int(self.headers['Content-Length'])
             game_state = self.rfile.read(content_length).decode('utf-8')
             game_state = json.loads(game_state)
+
+            # identify game being played
+            game_id = game_state['game_id']
+            if game_id not in states_dict:
+                # brand new game, initiate vars
+                states_dict[game_id] = {}
+                states_dict[game_id]['words_dict'] = build_dict(words_list_file)
+                # grey letters don't require position information so treat it as a set
+                states_dict[game_id]['grey_letters'] = set()
+                states_dict[game_id]['yellow_letters'] = {}
+                states_dict[game_id]['green_letters'] = {}
+
+            # load game state from states_dict
+            words_dict = states_dict[game_id]['words_dict']
+            grey_letters = states_dict[game_id]['grey_letters']
+            yellow_letters = states_dict[game_id]['yellow_letters']
+            green_letters = states_dict[game_id]['green_letters']
 
             # review results
             if 'guess_results' in game_state:
@@ -111,11 +122,7 @@ class mufsolver_server(BaseHTTPRequestHandler):
 
             else: 
                 # start of game, no results history
-                # build words_dict with the full set of words
-                words_dict = build_dict(words_list_file)
-                grey_letters.clear()
-                yellow_letters.clear()
-                green_letters.clear()
+                pass
             
             # pick a guess based on latest words_list
             guess_word = get_guess(words_dict)
@@ -128,6 +135,12 @@ class mufsolver_server(BaseHTTPRequestHandler):
             self.send_header("Content-length", len(guess))
             self.end_headers()
             self.wfile.write(guess)
+
+            # save game state in states_dict
+            states_dict[game_id]['words_dict'] = words_dict
+            states_dict[game_id]['grey_letters'] = grey_letters
+            states_dict[game_id]['yellow_letters'] = yellow_letters
+            states_dict[game_id]['green_letters'] = green_letters
         
         if self.path == "/results":
             content_length = int(self.headers['Content-Length'])
@@ -169,7 +182,27 @@ def build_dict(words_list_file):
 
 # initiate words_dict for the game
 words_list_file = "words_list.txt"
-words_dict = build_dict(words_list_file)
+
+# declare dict that tracks the state of each game
+# # # this dict is structured as follows:
+# # # {
+# # #     game_id_1: {
+# # #         words_dict: words_dict,
+# # #         grey_letters: grey_letters,
+# # #         yellow_letters: yellow_letters,
+# # #         green_letters: green_letters
+# # #     },
+# # #     .
+# # #     .
+# # #     .
+# # #     game_id_n: {
+# # #         words_dict: words_dict,
+# # #         grey_letters: grey_letters,
+# # #         yellow_letters: yellow_letters,
+# # #         green_letters: green_letters
+# # #     }
+# # # }
+states_dict = {}
 
 PORT = 8080
 server = HTTPServer(("", PORT), mufsolver_server)
