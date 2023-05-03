@@ -5,7 +5,7 @@ import logging
 import datetime as dt
 import os
 
-# logging preferences
+# logging preferences 
 current_time = dt.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
 verbose_format = logging.Formatter("%(asctime)s: %(levelname)s - %(message)s")
 preferred_format = logging.Formatter("%(message)s")
