@@ -155,7 +155,7 @@ def get_guess(words_dict):
     best_guesses = {k for k,v in words_dict.items() if v == max_unique}
     
     logger.info(f"max_unique = {max_unique}. Remaining words: {len(best_guesses)}")
-    logger.info(best_guesses)
+    logger.debug(best_guesses)
     return random.choice(list(best_guesses))
 
 def build_dict(words_list_file):
