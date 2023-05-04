@@ -200,7 +200,7 @@ def evaluate_games(game_results):
         # nest a key within results_summary 
         # the key is a unique game_id, the value is dict filled with game stats
         results_summary[game['game_id']] = {}
-        results_summary[game['game_id']]['num_turns'] = len(game['guess_durations_ns'])
+        results_summary[game['game_id']]['num_turns'] = len(game['guess_results'])
         results_summary[game['game_id']]['correct'] = True if 'correct' in game else False
 
     # add answer key to each game in results_summary
