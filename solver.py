@@ -49,9 +49,7 @@ class mufsolver_server(BaseHTTPRequestHandler):
 
             # identify game being played
             game_id = game_state['game_id']
-            print(f"playing {game_id}")
             if game_id not in states_dict:
-                print(f"this is a new game: {game_id}")
                 # brand new game, initiate vars
                 states_dict[game_id] = {}
                 states_dict[game_id]['words_dict'] = build_dict(words_list_file)
@@ -60,7 +58,7 @@ class mufsolver_server(BaseHTTPRequestHandler):
                 states_dict[game_id]['yellow_letters'] = {}
                 states_dict[game_id]['green_letters'] = {}
             
-            # set log file
+            # define which log file to write to based on unique game id
             set_logfile(game_id)
 
             # load game state from states_dict
@@ -145,10 +143,20 @@ class mufsolver_server(BaseHTTPRequestHandler):
             game_results = self.rfile.read(content_length).decode('utf-8')
             game_results = json.loads(game_results)
 
-            # update states_dict with results
+            # grab results and print to each game's log file
             results_summary = evaluate_games(game_results)
-            for game in results_summary:
-                continue
+            for game, summary in results_summary.items():
+                set_logfile(game)
+                logger.info("\n-----------------------------------------\n")
+                if summary['correct'] == True:
+                    logger.warning(f"You correctly guessed '{summary['answer']}' in {summary['num_turns']} turns!")
+                else:
+                    logger.warning(f"You lost after {summary['num_turns']} turns. The answer was '{summary['answer']}'.")
+                
+                # print final game_results payload to log file
+                logger.info("\n-----------------------------------------\n")
+                logger.info("Results payload:")
+                logger.info(json.dumps(game_results, indent=4))
 
 def get_guess(words_dict):
     # build a set of words with the maximum number of unique letters in remaining set
@@ -185,7 +193,6 @@ def set_logfile(game_id):
     file_handler.setFormatter(preferred_format)
     file_handler.setLevel(logging.INFO) # level=DEBUG will also log details on color checks  
     
-
 def evaluate_games(game_results):
     results_summary = {}
     games = game_results['results']['players'][0]['games_played']
