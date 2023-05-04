@@ -5,17 +5,11 @@ import logging
 import datetime as dt
 import os
 
-# logging preferences
-current_time = dt.datetime.now().strftime("%Y-%m-%d-%H-%M-%S")
+# logging preferences 
+current_time = dt.datetime.now().strftime("%Y-%m-%d-%H-%M")
 verbose_format = logging.Formatter("%(asctime)s: %(levelname)s - %(message)s")
 preferred_format = logging.Formatter("%(message)s")
-log_file = f"logs/{current_time}-game.log"
 if not os.path.exists("logs"): os.makedirs("logs")
-
-# file handler
-file_handler = logging.FileHandler(log_file)
-file_handler.setFormatter(preferred_format)
-file_handler.setLevel(logging.INFO) # level=DEBUG will also log details on color checks
 
 # stream handler
 stream_handler = logging.StreamHandler()
@@ -24,7 +18,6 @@ stream_handler.setLevel(logging.WARNING)
 
 # logger settings
 logger = logging.getLogger()
-logger.addHandler(file_handler)
 logger.addHandler(stream_handler)
 logger.setLevel(logging.DEBUG)
 
@@ -47,18 +40,32 @@ class mufsolver_server(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(mufsolver)
     
-    def do_POST(self):
-        # grey letters don't require position information so treat it as a set
-        global words_dict
-        grey_letters = set()
-        yellow_letters = {}
-        green_letters = {}
-        
+    def do_POST(self):        
         if self.path == "/guess":
             # read game state
             content_length = int(self.headers['Content-Length'])
             game_state = self.rfile.read(content_length).decode('utf-8')
             game_state = json.loads(game_state)
+
+            # identify game being played
+            game_id = game_state['game_id']
+            if game_id not in states_dict:
+                # brand new game, initiate vars
+                states_dict[game_id] = {}
+                states_dict[game_id]['words_dict'] = build_dict(words_list_file)
+                # grey letters don't require position information so treat it as a set
+                states_dict[game_id]['grey_letters'] = set()
+                states_dict[game_id]['yellow_letters'] = {}
+                states_dict[game_id]['green_letters'] = {}
+            
+            # define which log file to write to based on unique game id
+            set_logfile(game_id)
+
+            # load game state from states_dict
+            words_dict = states_dict[game_id]['words_dict']
+            grey_letters = states_dict[game_id]['grey_letters']
+            yellow_letters = states_dict[game_id]['yellow_letters']
+            green_letters = states_dict[game_id]['green_letters']
 
             # review results
             if 'guess_results' in game_state:
@@ -111,11 +118,7 @@ class mufsolver_server(BaseHTTPRequestHandler):
 
             else: 
                 # start of game, no results history
-                # build words_dict with the full set of words
-                words_dict = build_dict(words_list_file)
-                grey_letters.clear()
-                yellow_letters.clear()
-                green_letters.clear()
+                pass
             
             # pick a guess based on latest words_list
             guess_word = get_guess(words_dict)
@@ -128,26 +131,32 @@ class mufsolver_server(BaseHTTPRequestHandler):
             self.send_header("Content-length", len(guess))
             self.end_headers()
             self.wfile.write(guess)
+
+            # save game state in states_dict
+            states_dict[game_id]['words_dict'] = words_dict
+            states_dict[game_id]['grey_letters'] = grey_letters
+            states_dict[game_id]['yellow_letters'] = yellow_letters
+            states_dict[game_id]['green_letters'] = green_letters
         
         if self.path == "/results":
             content_length = int(self.headers['Content-Length'])
             game_results = self.rfile.read(content_length).decode('utf-8')
             game_results = json.loads(game_results)
 
-            last_game = game_results['results']['players'][0]['games_played'][-1]
-            if 'correct' in last_game:
-                game_won = last_game['correct'] # should be true
-            else:
-                game_won = False
-
-            answer = game_results['results']['games'][0]['answer']
-            num_turns = len(game_results['results']['players'][0]['games_played'][-1]['guess_results'])
-            
-            logger.info("\n-----------------------------------------\n")
-            if game_won:
-                logger.warning(f"You correctly guessed '{answer}' in {num_turns} turns!")
-            else:
-                logger.warning(f"You lost after {num_turns} turns. The answer was '{answer}'.")
+            # grab results and print to each game's log file
+            results_summary = evaluate_games(game_results)
+            for game, summary in results_summary.items():
+                set_logfile(game)
+                logger.info("\n-----------------------------------------\n")
+                if summary['correct'] == True:
+                    logger.warning(f"You correctly guessed '{summary['answer']}' in {summary['num_turns']} turns!")
+                else:
+                    logger.warning(f"You lost after {summary['num_turns']} turns. The answer was '{summary['answer']}'.")
+                
+                # print final game_results payload to log file
+                logger.info("\n-----------------------------------------\n")
+                logger.info("Results payload:")
+                logger.info(json.dumps(game_results, indent=4))
 
 def get_guess(words_dict):
     # build a set of words with the maximum number of unique letters in remaining set
@@ -167,9 +176,62 @@ def build_dict(words_list_file):
         
     return word_dict
 
+def set_logfile(game_id):
+    # remove any existing file handlers
+    # this is because we only want to print to one log file at a time
+    # as all games have their own unique logs
+    for handler in logger.handlers:
+        if isinstance(handler, logging.FileHandler):
+            logger.removeHandler(handler)
+    
+    # add new log file
+    log_file = f"logs/{current_time}-{game_id}.log"
+    file_handler = logging.FileHandler(log_file)
+    logger.addHandler(file_handler)
+
+    # set file_handler preferences
+    file_handler.setFormatter(preferred_format)
+    file_handler.setLevel(logging.INFO) # level=DEBUG will also log details on color checks  
+    
+def evaluate_games(game_results):
+    results_summary = {}
+    games = game_results['results']['players'][0]['games_played']
+    for game in games:
+        # nest a key within results_summary 
+        # the key is a unique game_id, the value is dict filled with game stats
+        results_summary[game['game_id']] = {}
+        results_summary[game['game_id']]['num_turns'] = len(game['guess_results'])
+        results_summary[game['game_id']]['correct'] = True if 'correct' in game else False
+
+    # add answer key to each game in results_summary
+    for answers in game_results['results']['games']:
+        results_summary[answers['game_id']]['answer'] = answers['answer']
+    
+    return results_summary
+
 # initiate words_dict for the game
 words_list_file = "words_list.txt"
-words_dict = build_dict(words_list_file)
+
+# declare dict that tracks the state of each game
+# # # this dict is structured as follows:
+# # # {
+# # #     game_id_1: {
+# # #         words_dict: words_dict,
+# # #         grey_letters: grey_letters,
+# # #         yellow_letters: yellow_letters,
+# # #         green_letters: green_letters
+# # #     },
+# # #     .
+# # #     .
+# # #     .
+# # #     game_id_n: {
+# # #         words_dict: words_dict,
+# # #         grey_letters: grey_letters,
+# # #         yellow_letters: yellow_letters,
+# # #         green_letters: green_letters
+# # #     }
+# # # }
+states_dict = {}
 
 PORT = 8080
 server = HTTPServer(("", PORT), mufsolver_server)
